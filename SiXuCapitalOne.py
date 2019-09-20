@@ -266,10 +266,10 @@ class CommentCounter:
         
 if __name__ == "__main__":
     javaChecker = CommentCounter() #initialize the class
-    javaChecker.loadCPPCommentPreset() #load the symbols for this language
+    #javaChecker.loadCPPCommentPreset() #load the symbols for this language
     #I've also included two other options:
-    #javaChecker.loadPythonCommentPreset()
+    javaChecker.loadPythonCommentPreset()
     #javaChecker.loadCustomSymbols(str,str,str)
-    javaChecker.useMultilineFSM(True) 
-    filename = "test.txt"
+    javaChecker.useMultilineFSM(False) 
+    filename = "test.py"
     javaChecker.checkFile(filename)
