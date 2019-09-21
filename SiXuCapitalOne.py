@@ -29,12 +29,17 @@ I have also included a way to detect multiline strings, this is necessary to
 ensure that comment symbols can be used in multi-line strings without breaking
 the counter. 
 
-I made the assumption that two multiline strings will not end and begin on the 
-same line. This is necessary because multiline strings and single line strings
-share characters sometimes, such as in Python. Multiline and single line strings
-are treated seperately because of this, if I wanted to be able to detect
-them together, it would require loading more than one line at a time into memory
+Other assumptions
+========================
+I have assumed that any spaces in front of comments are irrelevant. So two 
+blocks are treated as one if they are consecutive.
 '''
+#Magic values
+MULTILINESTR = -2
+NOCOMMENT = -1
+SINGLELINECOMMENT = 0
+MULTILINECOMMENT = 1
+
 
 class CommentCounter:
     def __init__(self): 
@@ -130,9 +135,10 @@ class CommentCounter:
     def commentSearch(self,line):
         '''
         Return the type of the first comment encountered in the string
+        -2 : Multiline string start
         -1 : No comment present
          0 : Single line comment
-         1 : Multi-line start
+         1 : Multi-line comment start
         and the index at which it is encountered
         
         This search assumes that strings are defined by either ' or "
@@ -141,24 +147,35 @@ class CommentCounter:
         '''
         i = 0
         while i < len(line):
+            if self.multiLineStringStart != None:
+                if line[i]==self.multiLineStringStart[0]:
+                    index = line.find(self.multiLineStringStart,i)
+                    if(index==i):
+                        index = line.find(self.multiLineStringEnd,i+len(self.multiLineStringStart))
+                        if index==-1:
+                            self.insideMultiLineString = True
+                            return MULTILINESTR, index
+                        else:
+                            i = index+len(self.multiLineStringEnd)
+                    
             if line[i]==self.singleLineComment[0]:
-                temp = line.find(self.singleLineComment,i)
-                if(temp>=0):
-                    if line.find(self.TODO,temp) != -1:
+                index = line.find(self.singleLineComment,i)
+                if(index==i):
+                    if line.find(self.TODO,index) != -1:
                         self.numToDo += 1
-                    return 0,temp
+                    return SINGLELINECOMMENT,index
             if line[i]==self.multiLineCommentStart[0]:
-                temp = line.find(self.multiLineCommentStart,i)
-                if(temp>=0):
-                    if line.find(self.TODO,temp) != -1:
+                index = line.find(self.multiLineCommentStart,i)
+                if(index==i):
+                    if line.find(self.TODO,index) != -1:
                         self.numToDo += 1
-                    return 1,temp
+                    return MULTILINECOMMENT,index
             if line[i]=='"':
                 i = line.find('"',i+1)
             elif line[i]=="'":
                 i = line.find("'",i+1)
             i += 1
-        return -1,-1
+        return NOCOMMENT,-1
         
     def checkPythonComment(self, line):
         '''
@@ -168,24 +185,24 @@ class CommentCounter:
         '''
         if self.PythonFSM == 0:
             commentType, index = self.commentSearch(line)
-            if commentType==-1: #No comment in this line
+            if commentType==NOCOMMENT or commentType==MULTILINESTR: #No comment in this line
                 return
             else:
-                if index==0: #Single line comment
+                if index==0: #Comment at the start, could be a block
                     self.PythonFSM = 1
                     self.checkPythonComment(line)
-                else:
+                else: #Trailing comment
                     self.PythonFSM = 5
                     self.checkPythonComment(line)
         
         elif self.PythonFSM == 5:
-            #Just a single line comment
+            #Single line trailing comment
             self.singleLineCount += 1
             self.commentCount += 1
             self.PythonFSM = 0
         
         elif self.PythonFSM == 1:
-            #Single line comment but could potentially be multiline
+            #Single line leading comment that could potentially be a block
             self.singleLineCount += 1
             self.commentCount += 1
             self.PythonFSM = 2
@@ -193,7 +210,7 @@ class CommentCounter:
         elif self.PythonFSM == 2:
             #Check to see if the single line should be promoted to multiline
             commentType, index = self.commentSearch(line)
-            if commentType==-1: #No comment present
+            if commentType==NOCOMMENT or commentType==MULTILINESTR:
                 self.PythonFSM = 0
             else:
                 if index==0:
@@ -214,7 +231,7 @@ class CommentCounter:
         elif self.PythonFSM == 4:
             #Inside a multiline, waiting to end
             commentType, index = self.commentSearch(line)
-            if commentType!=-1: #Contains comment
+            if commentType != NOCOMMENT and commentType!=MULTILINESTR:
                 if index==0: #Comment is at beginning of line, still multiline
                     self.commentCount+=1
                     self.linesInMultiline += 1
@@ -235,14 +252,14 @@ class CommentCounter:
         '''
         if self.CStyleFSM==0:
             commentType, index = self.commentSearch(line)
-            if commentType == 1: #Multiline comment starter found
+            if commentType == MULTILINECOMMENT:
                 self.commentCount += 1
                 self.multilineCount += 1
                 self.linesInMultiline += 1
                 if self.multiLineCommentEnd not in line:
                     self.CStyleFSM = 1
                     
-            elif commentType== 0: #Singleline comment found
+            elif commentType== SINGLELINECOMMENT:
                 self.commentCount += 1
                 self.singleLineCount += 1
             
@@ -251,7 +268,7 @@ class CommentCounter:
             #we find a multiLineEnder
             if self.TODO in line:
                 self.numToDo += 1
-            if self.multiLineCommentEnd in line:
+            if self.multiLineCommentEnd in line: #Reached the end
                 self.commentCount += 1
                 self.linesInMultiline += 1
                 self.CStyleFSM = 0
@@ -259,20 +276,6 @@ class CommentCounter:
                 self.commentCount += 1
                 self.linesInMultiline += 1
     
-    def checkForMultiLineString(self,line):
-        '''
-        Return true if this line contains an unclosed multi-line string
-        Also sets the class variable insideMultiLineString if we are
-        '''
-        if self.multiLineStringStart == None:
-            return False
-        idx = line.find(self.multiLineStringStart)
-        if idx != -1:
-            if line.find(self.multiLineStringEnd, idx+len(self.multiLineStringStart))==-1:
-                self.insideMultiLineString = True
-                return True
-        return False
-        
     def runFSM(self,filename):
         '''
         Main function for file parsing
@@ -292,9 +295,6 @@ class CommentCounter:
                         self.insideMultiLineString = False
                         line = line[idx+len(self.multiLineStringEnd):len(line)]
                     else:
-                        continue
-                else:
-                    if self.checkForMultiLineString(line):
                         continue
                         
                 if self.FSMType == False:
@@ -321,10 +321,10 @@ class CommentCounter:
         
 if __name__ == "__main__":
     javaChecker = CommentCounter() #initialize the class
-    #javaChecker.loadCPPCommentPreset() #load the symbols for this language
+    javaChecker.loadCPPCommentPreset() #load the symbols for this language
     #I've also included two other options:
-    javaChecker.loadPythonCommentPreset()
+    #javaChecker.loadPythonCommentPreset()
     #javaChecker.loadCustomSymbols(str,str,str) #add your own!
-    javaChecker.useMultilineFSM(False) 
-    filename = "test.py"
+    javaChecker.useMultilineFSM(True) 
+    filename = "test.txt"
     javaChecker.checkFile(filename)

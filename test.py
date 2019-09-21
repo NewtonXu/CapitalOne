@@ -28,7 +28,7 @@ def again():
 calc_again = input('''
 Do you want to calculate again?
 Please type Y for YES or N for NO.
-''')
+''') 
 
 # If user types Y, run the calculate() function
 if calc_again == 'Y':
