@@ -1,23 +1,19 @@
 '''
 Solution Overview
 ========================
-For this assignment, I was only familiar with the two commenting styles:
-Python #, and C-style /* */, //. 
-
-My quick search through various programming languages indicates that these are 
-sufficient to cover the majority of popular languages. That is, one case where
-the single line comment and multiline comments are identical, and one case
-where the multiline comment has different symbols.
+I implemented two finite state machines to handle the two styles of commenting
+from the example.
 
 The CStyleFSM is capable of handling any programming language with both single
 line and multi-line comments. The symbol set of //, /* */ seems to apply quite
-broadly. 
+broadly, C++ / Java. Here I assume multiple consecutive single comments are not 
+treated as a block
 
 CStyleFSM can also handle languages with only multi-line 
 comments like HTML. In this case I made the assumption that all comments here 
-should be treated as multiline comments as given in the example. I 
+should be treated as multiline comments as given in the example. 
 
-The PythonFSM will handle cases where there are only single line comments. But
+The PythonFSM will handle cases where there are only single line comments. And
 multiple consecutive single line comments count as blocks. 
 
 Handling strings
@@ -33,15 +29,11 @@ I have also included a way to detect multiline strings, this is necessary to
 ensure that comment symbols can be used in multi-line strings without breaking
 the counter. 
 
-However, I have assumed that a comment will not show up on the 
-same line as the end of a multiline string. 
-
-
-
-
-
-
-
+I made the assumption that two multiline strings will not end and begin on the 
+same line. This is necessary because multiline strings and single line strings
+share characters sometimes, such as in Python. Multiline and single line strings
+are treated seperately because of this, if I wanted to be able to detect
+them together, it would require loading more than one line at a time into memory
 '''
 
 class CommentCounter:
@@ -152,11 +144,15 @@ class CommentCounter:
             if line[i]==self.singleLineComment[0]:
                 temp = line.find(self.singleLineComment,i)
                 if(temp>=0):
-                     return 0,temp
+                    if line.find(self.TODO,temp) != -1:
+                        self.numToDo += 1
+                    return 0,temp
             if line[i]==self.multiLineCommentStart[0]:
                 temp = line.find(self.multiLineCommentStart,i)
                 if(temp>=0):
-                     return 1,temp
+                    if line.find(self.TODO,temp) != -1:
+                        self.numToDo += 1
+                    return 1,temp
             if line[i]=='"':
                 i = line.find('"',i+1)
             elif line[i]=="'":
@@ -186,16 +182,12 @@ class CommentCounter:
             #Just a single line comment
             self.singleLineCount += 1
             self.commentCount += 1
-            if self.TODO in line:
-                self.numToDo += 1
             self.PythonFSM = 0
         
         elif self.PythonFSM == 1:
             #Single line comment but could potentially be multiline
             self.singleLineCount += 1
             self.commentCount += 1
-            if self.TODO in line:
-                self.numToDo += 1
             self.PythonFSM = 2
         
         elif self.PythonFSM == 2:
@@ -218,8 +210,6 @@ class CommentCounter:
             self.multilineCount += 1
             self.linesInMultiline += 2
             self.PythonFSM = 4
-            if self.TODO in line:
-                self.numToDo += 1
         
         elif self.PythonFSM == 4:
             #Inside a multiline, waiting to end
@@ -228,8 +218,6 @@ class CommentCounter:
                 if index==0: #Comment is at beginning of line, still multiline
                     self.commentCount+=1
                     self.linesInMultiline += 1
-                    if self.TODO in line:
-                        self.numToDo += 1
                 else: #Comment is not at beginning, no longer multiline
                     self.PythonFSM = 5
                     self.checkPythonComment(line)
@@ -251,16 +239,12 @@ class CommentCounter:
                 self.commentCount += 1
                 self.multilineCount += 1
                 self.linesInMultiline += 1
-                if self.TODO in line:
-                    self.numToDo += 1
                 if self.multiLineCommentEnd not in line:
                     self.CStyleFSM = 1
                     
             elif commentType== 0: #Singleline comment found
                 self.commentCount += 1
                 self.singleLineCount += 1
-                if self.TODO in line:
-                    self.numToDo += 1
             
         elif self.CStyleFSM==1:
             #We are inside a multiline comment, just keep incrementing until
@@ -301,8 +285,13 @@ class CommentCounter:
                 #This section is specifically for dealing with multiline strings
                 #If a multiline string is encountered, skip lines until the end
                 if self.insideMultiLineString:
-                    if self.multiLineStringEnd in line:
+                    idx = line.find(self.multiLineStringEnd)
+                    if idx!=-1:
+                        #We've found the end, slice off the end of the multiline
+                        #Then search as usual.
                         self.insideMultiLineString = False
+                        line = line[idx+len(self.multiLineStringEnd):len(line)]
+                    else:
                         continue
                 else:
                     if self.checkForMultiLineString(line):
