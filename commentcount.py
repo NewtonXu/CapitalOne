@@ -184,7 +184,7 @@ class CommentCounter:
             i += 1
         return NOCOMMENT,-1
         
-    def checkPythonComment(self, line;str)->None:
+    def checkPythonComment(self, line:str)->None:
         '''
         Use this to compute comments where the single line comment and multiline
         comments use identical identifiers and the multiline is just 
@@ -251,7 +251,8 @@ class CommentCounter:
     def checkOtherComment(self, line:str)->None:
         '''
         Use this to compute comments where the multiline and single line
-        comments are different EG: C++, Java 
+        comments are different or there are no single line comments 
+        EG: C++, Java 
         
         This uses an FSM with two states:
         CStyleFSM = 0 means we are not inside a multiline comment, normal search
@@ -310,11 +311,13 @@ class CommentCounter:
                     self.checkOtherComment(line)
         self.printAll()
     
-    def checkFile(self, filename:str)->None:
+    def checkFile(self, filepath:str)->None:
         '''
-        Entry point into the algorithm
+        Entry point into the algorithm, I do some basic
+        checks on the path
         '''
         self.reset()
+        filename = filepath.split("/")[-1]
         if filename[0] == ".":
             print("This file starts with . ?")
             return
@@ -322,4 +325,4 @@ class CommentCounter:
         if len(filename_info)<2:
             print("This file has no extension ?")
             return
-        self.runFSM(filename)
+        self.runFSM(filepath)
